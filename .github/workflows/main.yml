@@ -1,0 +1,107 @@
+name: Build Hn38videoAItool
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Clean old build
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force __pycache__ -ErrorAction SilentlyContinue
+
+      - name: Check Python source
+        shell: pwsh
+        run: |
+          python -m py_compile desktop/main.py
+
+      - name: Build Hn38videoAItool
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean Hn38videoAItool.spec
+
+      - name: Prepare portable package
+        shell: pwsh
+        run: |
+          $app = "dist/Hn38videoAItool"
+
+          New-Item -ItemType Directory -Force "$app/browser_profiles/meta"
+          New-Item -ItemType Directory -Force "$app/browser_profiles/flow"
+          New-Item -ItemType Directory -Force "$app/output"
+          New-Item -ItemType Directory -Force "$app/logs"
+          New-Item -ItemType Directory -Force "$app/data"
+
+          if (Test-Path "assets") {
+            Copy-Item -Recurse "assets" "$app/"
+          }
+
+          if (Test-Path "data") {
+            Copy-Item -Recurse "data/*" "$app/data/" -Force
+          }
+
+          @"
+          Hn38videoAItool
+          Version: 1.0.0
+          Developer: Hoainguyenstudio
+          Zalo: 0965.043.000
+
+          Browser:
+          Google Chrome hoặc Microsoft Edge
+
+          Profiles:
+          browser_profiles/meta
+          browser_profiles/flow
+
+          Không sử dụng profile Chrome chính.
+          "@ | Out-File "$app/README.txt" -Encoding UTF8
+
+      - name: Remove unnecessary files
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "dist/Hn38videoAItool" -Recurse -Directory |
+            Where-Object {
+              $_.Name -in @("__pycache__", ".pytest_cache")
+            } |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Create Windows ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "dist/Hn38videoAItool/*" `
+            -DestinationPath "dist/Hn38videoAItool-Windows.zip" `
+            -Force
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hn38videoAItool-Windows
+          path: dist/Hn38videoAItool-Windows.zip
+          if-no-files-found: error
